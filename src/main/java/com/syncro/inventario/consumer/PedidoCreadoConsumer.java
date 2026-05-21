@@ -6,43 +6,41 @@ import org.springframework.amqp.rabbit.annotation.RabbitListener;
 import org.springframework.stereotype.Component;
 
 import com.syncro.inventario.config.RabbitMQConfig;
-import com.syncro.inventario.dto.DescuentoStockRequest;
-import com.syncro.inventario.dto.PedidoCreadoEvent;
+import com.syncro.inventario.event.PedidoCreadoEvent;
 import com.syncro.inventario.service.InventarioService;
-
+import lombok.Getter;
 import lombok.RequiredArgsConstructor;
+import lombok.Setter;
 
 @Component
 @RequiredArgsConstructor
+@Getter
+@Setter
 public class PedidoCreadoConsumer {
 
     private static final Logger log = LoggerFactory.getLogger(PedidoCreadoConsumer.class);
-    private final InventarioService inventarioService;
+    private InventarioService inventarioService;
 
-    @RabbitListener(queues = RabbitMQConfig.INVENTARIO_SINCRONIZAR_QUEUE)
+    @RabbitListener(queues = RabbitMQConfig.COLA_INVENTARIO)
     public void handlePedidoCreado(PedidoCreadoEvent event) {
-        try {
-            log.info("Recibido evento pedido.creado para pedido ID: {}", event.getPedidoId());
+        log.info("Evento pedido.creado recibido para pedido ID: {}", event.getPedidoId());
 
-            if (event.getItems() != null && !event.getItems().isEmpty()) {
-                for (PedidoCreadoEvent.ItemPedido item : event.getItems()) {
-                    DescuentoStockRequest request = DescuentoStockRequest.builder()
-                            .productoId(item.getProductoId())
-                            .pedidoId(event.getPedidoId())
-                            .cantidad(item.getCantidad())
-                            .build();
+        if (event.getItems() == null || event.getItems().isEmpty()) {
+            log.warn("El evento pedido.creado para pedido ID: {} no contiene items.", event.getPedidoId());
+            return;
+        }
 
-                    inventarioService.descontarStock(request);
-                    log.info("Stock descontado para producto ID: {}, cantidad: {}", 
-                            item.getProductoId(), item.getCantidad());
-                }
-                log.info("Procesamiento completado para pedido ID: {}", event.getPedidoId());
-            } else {
-                log.warn("Evento pedido.creado sin items para pedido ID: {}", event.getPedidoId());
+        for (PedidoCreadoEvent.ItemEvento item : event.getItems()) {
+            try {
+                inventarioService.descontarStockPorSku(item.getSku(), event.getEmpresaId(), 
+                        event.getPedidoId(), item.getCantidad());
+                
+                log.info("Stock descontado exitosamente para SKU: {} en pedido ID: {}",
+                        item.getSku(), event.getPedidoId());
+            } catch (Exception e) {
+                log.error("Error al descontar stock para SKU: {} en pedido ID: {}. Error: {}",
+                        item.getSku(), event.getPedidoId(), e.getMessage());
             }
-        } catch (Exception e) {
-            log.error("Error procesando evento pedido.creado para pedido ID: {}", event.getPedidoId(), e);
-            throw e;
         }
     }
 }

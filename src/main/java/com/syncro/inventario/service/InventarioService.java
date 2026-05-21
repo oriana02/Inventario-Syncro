@@ -22,23 +22,18 @@ import com.syncro.inventario.repository.MovimientoInventarioRepository;
 import com.syncro.inventario.repository.ProductoRepository;
 import com.syncro.inventario.repository.ReservaStockRepository;
 
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+
 @Service
+@RequiredArgsConstructor
+@Slf4j
 public class InventarioService {
 
     private final ProductoRepository productoRepository;
     private final MovimientoInventarioRepository movimientoRepository;
     private final ReservaStockRepository reservaRepository;
     private final AjusteInventarioRepository ajusteRepository;
-
-    public InventarioService(ProductoRepository productoRepository,
-                            MovimientoInventarioRepository movimientoRepository,
-                            ReservaStockRepository reservaRepository,
-                            AjusteInventarioRepository ajusteRepository) {
-        this.productoRepository = productoRepository;
-        this.movimientoRepository = movimientoRepository;
-        this.reservaRepository = reservaRepository;
-        this.ajusteRepository = ajusteRepository;
-    }
 
     @Transactional(readOnly = true)
     public List<ProductoResponse> consultarProductos(Long empresaId, Long categoriaId) {
@@ -48,7 +43,7 @@ public class InventarioService {
         } else {
             productos = productoRepository.findByCategoria_IdAndActivoTrue(empresaId);
         }
-        
+
         return productos.stream()
                 .map(this::mapToProductoResponse)
                 .collect(Collectors.toList());
@@ -62,24 +57,44 @@ public class InventarioService {
     }
 
     @Transactional
+    public void descontarStockPorSku(String sku, Long empresaId, Long pedidoId, Integer cantidad) {
+        Producto producto = productoRepository.findBySkuAndEmpresaId(sku, empresaId)
+                .orElseThrow(() -> new ProductoNoEncontradoException("Producto no encontrado con SKU: " + sku));
+
+        if (producto.getStockActual() < cantidad) {
+            throw new StockInsuficienteException(
+                    String.format("Stock insuficiente para producto SKU: %s. Disponible: %d, Solicitado: %d",
+                            sku, producto.getStockActual(), cantidad));
+        }
+
+        Integer stockAnterior = producto.getStockActual();
+        producto.setStockActual(producto.getStockActual() - cantidad);
+        productoRepository.save(producto);
+
+        registrarMovimiento(producto, "VENTA", -cantidad,
+                stockAnterior, producto.getStockActual(),
+                pedidoId, null, "EVENTO_RABBITMQ", "Descuento de stock por pedido");
+
+    }
+
+    @Transactional
     public void descontarStock(DescuentoStockRequest request) {
         Producto producto = productoRepository.findById(request.getProductoId())
                 .orElseThrow(() -> new ProductoNoEncontradoException("Producto no encontrado con ID: " + request.getProductoId()));
 
-        Integer stockDisponible = producto.getStockActual() - producto.getStockReservado();
-        if (stockDisponible < request.getCantidad()) {
+        if (producto.getStockActual() < request.getCantidad()) {
             throw new StockInsuficienteException(
-                    String.format("Stock insuficiente. Disponible: %d, Solicitado: %d", 
-                            stockDisponible, request.getCantidad()));
+                    String.format("Stock insuficiente para producto ID: %d. Disponible: %d, Solicitado: %d",
+                            request.getProductoId(), producto.getStockActual(), request.getCantidad()));
         }
 
         Integer stockAnterior = producto.getStockActual();
         producto.setStockActual(producto.getStockActual() - request.getCantidad());
         productoRepository.save(producto);
 
-        registrarMovimiento(producto, "VENTA", -request.getCantidad(), stockAnterior, 
-                producto.getStockActual(), request.getPedidoId(), null, "EVENTO_RABBITMQ", 
-                "Descuento de stock por pedido: " + request.getPedidoId());
+        registrarMovimiento(producto, "VENTA", -request.getCantidad(),
+                stockAnterior, producto.getStockActual(),
+                request.getPedidoId(), null, "API", "Descuento de stock por venta");
     }
 
     @Transactional
@@ -98,7 +113,7 @@ public class InventarioService {
         productoRepository.save(producto);
 
         String tipoMovimiento = request.getCantidad() > 0 ? "AJUSTE_ENTRADA" : "AJUSTE_SALIDA";
-        MovimientoInventario movimiento = registrarMovimiento(producto, tipoMovimiento, request.getCantidad(), 
+        MovimientoInventario movimiento = registrarMovimiento(producto, tipoMovimiento, request.getCantidad(),
                 stockAnterior, stockNuevo, null, request.getUsuarioId(), "USUARIO", request.getMotivo());
 
         AjusteInventario ajuste = AjusteInventario.builder()
@@ -122,7 +137,7 @@ public class InventarioService {
         Integer stockDisponible = producto.getStockActual() - producto.getStockReservado();
         if (stockDisponible < request.getCantidad()) {
             throw new StockInsuficienteException(
-                    String.format("Stock insuficiente para reserva. Disponible: %d, Solicitado: %d", 
+                    String.format("Stock insuficiente para reserva. Disponible: %d, Solicitado: %d",
                             stockDisponible, request.getCantidad()));
         }
 
@@ -140,11 +155,11 @@ public class InventarioService {
                 .fechaCreacion(LocalDateTime.now())
                 .fechaExpiracion(fechaExpiracion)
                 .build();
-        
+
         ReservaStock savedReserva = reservaRepository.save(reserva);
 
-        registrarMovimiento(producto, "RESERVA", request.getCantidad(), 
-                producto.getStockActual(), producto.getStockActual(), 
+        registrarMovimiento(producto, "RESERVA", request.getCantidad(),
+                producto.getStockActual(), producto.getStockActual(),
                 request.getPedidoId(), null, "SISTEMA", "Reserva de stock");
 
         return savedReserva;
@@ -167,8 +182,8 @@ public class InventarioService {
         reserva.setFechaResolucion(LocalDateTime.now());
         reservaRepository.save(reserva);
 
-        registrarMovimiento(producto, "LIBERACION_RESERVA", reserva.getCantidad(), 
-                producto.getStockActual(), producto.getStockActual(), 
+        registrarMovimiento(producto, "LIBERACION_RESERVA", reserva.getCantidad(),
+                producto.getStockActual(), producto.getStockActual(),
                 reserva.getPedidoId(), null, "SISTEMA", "Liberación de reserva");
     }
 
@@ -191,15 +206,15 @@ public class InventarioService {
         reserva.setFechaResolucion(LocalDateTime.now());
         reservaRepository.save(reserva);
 
-        registrarMovimiento(producto, "VENTA", -reserva.getCantidad(), 
-                stockAnterior, producto.getStockActual(), 
+        registrarMovimiento(producto, "VENTA", -reserva.getCantidad(),
+                stockAnterior, producto.getStockActual(),
                 reserva.getPedidoId(), null, "SISTEMA", "Confirmación de reserva");
     }
 
     @Transactional
     public void liberarReservasExpiradas() {
         List<ReservaStock> reservasExpiradas = reservaRepository.findExpiredReservas(LocalDateTime.now());
-        
+
         for (ReservaStock reserva : reservasExpiradas) {
             try {
                 liberarReserva(reserva.getId());
@@ -212,8 +227,8 @@ public class InventarioService {
         }
     }
 
-    private MovimientoInventario registrarMovimiento(Producto producto, String tipo, Integer cantidad, 
-            Integer stockAnterior, Integer stockPosterior, Long pedidoId, Long usuarioId, 
+    private MovimientoInventario registrarMovimiento(Producto producto, String tipo, Integer cantidad,
+            Integer stockAnterior, Integer stockPosterior, Long pedidoId, Long usuarioId,
             String origen, String motivo) {
         MovimientoInventario movimiento = MovimientoInventario.builder()
                 .producto(producto)

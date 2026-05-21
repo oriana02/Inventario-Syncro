@@ -7,7 +7,11 @@ import lombok.*;
 
 @Entity
 @Table(name = "ajuste_inventario")
-@Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
+@Getter
+@Setter
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
 public class AjusteInventario {
 
     @Id

@@ -3,6 +3,7 @@ package com.syncro.inventario.config;
 import org.springframework.amqp.core.Queue;
 import org.springframework.amqp.rabbit.connection.ConnectionFactory;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
+import org.springframework.amqp.support.converter.Jackson2JsonMessageConverter;
 import org.springframework.amqp.support.converter.MessageConverter;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -10,16 +11,18 @@ import org.springframework.context.annotation.Configuration;
 @Configuration
 public class RabbitMQConfig {
 
-    public static final String INVENTARIO_SINCRONIZAR_QUEUE = "inventario.sincronizar";
+    public static final String COLA_INVENTARIO = "inventario.sincronizar";
 
     @Bean
-    public Queue inventarioSincronizarQueue() {
-        return new Queue(INVENTARIO_SINCRONIZAR_QUEUE, true);
+    public Queue colaInventario() {
+        return new Queue(COLA_INVENTARIO, true);
     }
 
+    // transforma objetos a texto plano formtato JSON
     @Bean
     public MessageConverter converter() {
-        return new org.springframework.amqp.support.converter.SimpleMessageConverter();
+        return new Jackson2JsonMessageConverter();
+
     }
 
     @Bean
