@@ -10,6 +10,8 @@ import com.syncro.inventario.dto.AjusteInventarioRequest;
 import com.syncro.inventario.dto.DescuentoStockRequest;
 import com.syncro.inventario.dto.ProductoResponse;
 import com.syncro.inventario.dto.ReservaStockRequest;
+import com.syncro.inventario.dto.CrearProductoRequest;
+import com.syncro.inventario.dto.ActualizarProductoRequest;
 import com.syncro.inventario.model.ReservaStock;
 import com.syncro.inventario.service.InventarioService;
 
@@ -25,7 +27,7 @@ import lombok.RequiredArgsConstructor;
 @Tag(name = "Inventario", description = "API para gestión de inventario")
 public class InventarioController {
 
-    private InventarioService inventarioService;
+    private final InventarioService inventarioService;
 
     @GetMapping("")
     @Operation(summary = "Health check endpoint", description = "Verifica que el microservicio esté funcionando")
@@ -85,5 +87,29 @@ public class InventarioController {
             @Parameter(description = "ID de la reserva") @PathVariable Long id) {
         inventarioService.confirmarReserva(id);
         return ResponseEntity.ok().build();
+    }
+
+    @PostMapping("/productos")
+    @Operation(summary = "Crear producto", description = "Registra un nuevo producto en el inventario")
+    public ResponseEntity<ProductoResponse> crearProducto(
+            @Valid @RequestBody CrearProductoRequest request) {
+        ProductoResponse response = inventarioService.crearProducto(request);
+        return ResponseEntity.status(HttpStatus.CREATED).body(response);
+    }
+
+    @PatchMapping("/productos/{id}")
+    @Operation(summary = "Actualizar producto", description = "Modifica los datos de un producto existente")
+    public ResponseEntity<ProductoResponse> actualizarProducto(
+            @PathVariable Long id,
+            @Valid @RequestBody ActualizarProductoRequest request) {
+        ProductoResponse response = inventarioService.actualizarProducto(id, request);
+        return ResponseEntity.ok(response);
+    }
+
+    @DeleteMapping("/productos/{id}")
+    @Operation(summary = "Eliminar producto", description = "Desactiva un producto (borrado logico)")
+    public ResponseEntity<Void> eliminarProducto(@PathVariable Long id) {
+        inventarioService.eliminarProducto(id);
+        return ResponseEntity.noContent().build();
     }
 }

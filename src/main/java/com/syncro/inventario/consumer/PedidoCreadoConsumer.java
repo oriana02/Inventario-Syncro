@@ -19,7 +19,7 @@ import lombok.Setter;
 public class PedidoCreadoConsumer {
 
     private static final Logger log = LoggerFactory.getLogger(PedidoCreadoConsumer.class);
-    private InventarioService inventarioService;
+    private final InventarioService inventarioService;
 
     @RabbitListener(queues = RabbitMQConfig.COLA_INVENTARIO)
     public void handlePedidoCreado(PedidoCreadoEvent event) {
@@ -32,9 +32,9 @@ public class PedidoCreadoConsumer {
 
         for (PedidoCreadoEvent.ItemEvento item : event.getItems()) {
             try {
-                inventarioService.descontarStockPorSku(item.getSku(), event.getEmpresaId(), 
+                inventarioService.descontarStockPorSku(item.getSku(), event.getEmpresaId(),
                         event.getPedidoId(), item.getCantidad());
-                
+
                 log.info("Stock descontado exitosamente para SKU: {} en pedido ID: {}",
                         item.getSku(), event.getPedidoId());
             } catch (Exception e) {

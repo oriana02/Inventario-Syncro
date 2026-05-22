@@ -11,6 +11,8 @@ import com.syncro.inventario.dto.AjusteInventarioRequest;
 import com.syncro.inventario.dto.DescuentoStockRequest;
 import com.syncro.inventario.dto.ProductoResponse;
 import com.syncro.inventario.dto.ReservaStockRequest;
+import com.syncro.inventario.dto.CrearProductoRequest;
+import com.syncro.inventario.dto.ActualizarProductoRequest;
 import com.syncro.inventario.exception.StockInsuficienteException;
 import com.syncro.inventario.exception.ProductoNoEncontradoException;
 import com.syncro.inventario.model.AjusteInventario;
@@ -21,6 +23,7 @@ import com.syncro.inventario.repository.AjusteInventarioRepository;
 import com.syncro.inventario.repository.MovimientoInventarioRepository;
 import com.syncro.inventario.repository.ProductoRepository;
 import com.syncro.inventario.repository.ReservaStockRepository;
+import com.syncro.inventario.repository.CategoriaRepository;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -34,6 +37,7 @@ public class InventarioService {
     private final MovimientoInventarioRepository movimientoRepository;
     private final ReservaStockRepository reservaRepository;
     private final AjusteInventarioRepository ajusteRepository;
+    private final CategoriaRepository categoriaRepository;
 
     @Transactional(readOnly = true)
     public List<ProductoResponse> consultarProductos(Long empresaId, Long categoriaId) {
@@ -41,7 +45,7 @@ public class InventarioService {
         if (categoriaId != null) {
             productos = productoRepository.findByEmpresaIdAndFilters(empresaId, categoriaId);
         } else {
-            productos = productoRepository.findByCategoria_IdAndActivoTrue(empresaId);
+            productos = productoRepository.findByEmpresaIdAndFilters(empresaId, null);
         }
 
         return productos.stream()
@@ -73,7 +77,7 @@ public class InventarioService {
 
         registrarMovimiento(producto, "VENTA", -cantidad,
                 stockAnterior, producto.getStockActual(),
-                pedidoId, null, "EVENTO_RABBITMQ", "Descuento de stock por pedido");
+                pedidoId, null, "EVENTO_RABBITMQ", "Descuento automatico stock por pedido");
 
     }
 
@@ -94,7 +98,7 @@ public class InventarioService {
 
         registrarMovimiento(producto, "VENTA", -request.getCantidad(),
                 stockAnterior, producto.getStockActual(),
-                request.getPedidoId(), null, "API", "Descuento de stock por venta");
+                request.getPedidoId(), null, "USUARIO", "Descuento de stock por venta");
     }
 
     @Transactional
@@ -243,6 +247,47 @@ public class InventarioService {
                 .fecha(LocalDateTime.now())
                 .build();
         return movimientoRepository.save(movimiento);
+    }
+
+    public ProductoResponse crearProducto(CrearProductoRequest request) {
+        Producto producto = Producto.builder()
+                .empresaId(request.getEmpresaId())
+                .sku(request.getSku())
+                .nombre(request.getNombre())
+                .descripcion(request.getDescripcion())
+                .unidadMedida(request.getUnidadMedida() != null ? request.getUnidadMedida() : "UNIDAD")
+                .stockActual(request.getStockInicial() != null ? request.getStockInicial() : 0)
+                .stockMinimo(request.getStockMinimo() != null ? request.getStockMinimo() : 0)
+                .precioUnitario(request.getPrecioUnitario())
+                .activo(true)
+                .build();
+        if (request.getCategoriaId() != null) {
+            categoriaRepository.findById(request.getCategoriaId())
+                .ifPresent(producto::setCategoria);
+        }
+        return mapToProductoResponse(productoRepository.save(producto));
+    }
+
+    public ProductoResponse actualizarProducto(Long id, ActualizarProductoRequest request) {
+        Producto producto = productoRepository.findById(id)
+                .orElseThrow(() -> new ProductoNoEncontradoException("Producto no encontrado: " + id));
+        if (request.getNombre() != null) producto.setNombre(request.getNombre());
+        if (request.getDescripcion() != null) producto.setDescripcion(request.getDescripcion());
+        if (request.getPrecioUnitario() != null) producto.setPrecioUnitario(request.getPrecioUnitario());
+        if (request.getStockMinimo() != null) producto.setStockMinimo(request.getStockMinimo());
+        if (request.getActivo() != null) producto.setActivo(request.getActivo());
+        if (request.getCategoriaId() != null) {
+            categoriaRepository.findById(request.getCategoriaId())
+                .ifPresent(producto::setCategoria);
+        }
+        return mapToProductoResponse(productoRepository.save(producto));
+    }
+
+    public void eliminarProducto(Long id) {
+        Producto producto = productoRepository.findById(id)
+                .orElseThrow(() -> new ProductoNoEncontradoException("Producto no encontrado: " + id));
+        producto.setActivo(false);
+        productoRepository.save(producto);
     }
 
     private ProductoResponse mapToProductoResponse(Producto producto) {
