@@ -17,12 +17,12 @@ public class RabbitMQConfig {
         return new Queue(COLA_INVENTARIO, true);
     }
     @Bean
-    public FanoutExchange exchange() {
+    public FanoutExchange pedidosExchange() {
         return new FanoutExchange(EXCHANGE);
     }
     @Bean
-    public Binding bindingInventario(Queue colaInventario, FanoutExchange exchange) {
-        return BindingBuilder.bind(colaInventario).to(exchange);
+    public Binding bindingInventario(Queue colaInventario, FanoutExchange pedidosExchange) {
+        return BindingBuilder.bind(colaInventario).to(pedidosExchange);
     }
     @Bean
     public MessageConverter converter() {

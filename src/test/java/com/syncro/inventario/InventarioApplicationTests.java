@@ -1,6 +1,5 @@
 package com.syncro.inventario;
 
-import com.syncro.inventario.config.RabbitMQConfig;
 import com.syncro.inventario.consumer.PedidoCreadoConsumer;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;

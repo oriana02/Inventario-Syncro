@@ -306,7 +306,7 @@ class InventarioServiceTest {
         inventarioService.liberarReserva(1L);
 
         assertThat(reserva.getEstado()).isEqualTo("LIBERADA");
-        assertThat(productoMock.getStockReservado()).isEqualTo(0);
+        assertThat(productoMock.getStockReservado()).isZero();
     }
 
     @Test
