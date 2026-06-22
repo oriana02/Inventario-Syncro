@@ -1,5 +1,5 @@
 package com.syncro.inventario.dto;
-import jakarta.validation.constraints.*;
+
 import lombok.*;
 import java.math.BigDecimal;
 
@@ -8,6 +8,7 @@ import java.math.BigDecimal;
 @AllArgsConstructor
 @Builder
 public class ActualizarProductoRequest {
+
     private String sku;
     private String nombre;
     private String descripcion;

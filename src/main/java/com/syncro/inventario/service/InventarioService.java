@@ -2,7 +2,6 @@ package com.syncro.inventario.service;
 
 import java.time.LocalDateTime;
 import java.util.List;
-import java.util.stream.Collectors;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -26,6 +25,9 @@ import com.syncro.inventario.repository.ReservaStockRepository;
 import com.syncro.inventario.repository.CategoriaRepository;
 
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.ApplicationContext;
+import org.springframework.context.annotation.Lazy;
 import lombok.extern.slf4j.Slf4j;
 
 @Service
@@ -33,11 +35,22 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 public class InventarioService {
 
+    private static final String PRODUCTO_NO_ENCONTRADO_ID = "Producto no encontrado con ID: ";
+    private static final String PRODUCTO_NO_ENCONTRADO_SKU = "Producto no encontrado con SKU: ";
+    private static final String TIPO_VENTA = "VENTA";
+    private static final String TIPO_RESERVA = "RESERVA";
+    private static final String ESTADO_ACTIVA = "ACTIVA";
+    private static final String ACTOR_SISTEMA = "SISTEMA";
+    @Autowired
+    private ApplicationContext applicationContext;
+
+
     private final ProductoRepository productoRepository;
     private final MovimientoInventarioRepository movimientoRepository;
     private final ReservaStockRepository reservaRepository;
     private final AjusteInventarioRepository ajusteRepository;
     private final CategoriaRepository categoriaRepository;
+
 
     @Transactional(readOnly = true)
     public List<ProductoResponse> consultarProductos(Long empresaId, Long categoriaId) {
@@ -47,23 +60,22 @@ public class InventarioService {
         } else {
             productos = productoRepository.findByEmpresaIdAndFilters(empresaId, null);
         }
-
         return productos.stream()
                 .map(this::mapToProductoResponse)
-                .collect(Collectors.toList());
+                .toList();
     }
 
     @Transactional(readOnly = true)
     public ProductoResponse consultarProductoPorId(Long id) {
         Producto producto = productoRepository.findById(id)
-                .orElseThrow(() -> new ProductoNoEncontradoException("Producto no encontrado con ID: " + id));
+                .orElseThrow(() -> new ProductoNoEncontradoException(PRODUCTO_NO_ENCONTRADO_ID + id));
         return mapToProductoResponse(producto);
     }
 
     @Transactional
     public void descontarStockPorSku(String sku, Long empresaId, Long pedidoId, Integer cantidad) {
         Producto producto = productoRepository.findBySkuAndEmpresaId(sku, empresaId)
-                .orElseThrow(() -> new ProductoNoEncontradoException("Producto no encontrado con SKU: " + sku));
+                .orElseThrow(() -> new ProductoNoEncontradoException(PRODUCTO_NO_ENCONTRADO_SKU + sku));
 
         if (producto.getStockActual() < cantidad) {
             throw new StockInsuficienteException(
@@ -75,16 +87,15 @@ public class InventarioService {
         producto.setStockActual(producto.getStockActual() - cantidad);
         productoRepository.save(producto);
 
-        registrarMovimiento(producto, "VENTA", -cantidad,
+        registrarMovimiento(producto, TIPO_VENTA, -cantidad,
                 stockAnterior, producto.getStockActual(),
                 pedidoId, null, "EVENTO_RABBITMQ", "Descuento automatico stock por pedido");
-
     }
 
     @Transactional
     public void descontarStock(DescuentoStockRequest request) {
         Producto producto = productoRepository.findById(request.getProductoId())
-                .orElseThrow(() -> new ProductoNoEncontradoException("Producto no encontrado con ID: " + request.getProductoId()));
+                .orElseThrow(() -> new ProductoNoEncontradoException(PRODUCTO_NO_ENCONTRADO_ID + request.getProductoId()));
 
         if (producto.getStockActual() < request.getCantidad()) {
             throw new StockInsuficienteException(
@@ -96,7 +107,7 @@ public class InventarioService {
         producto.setStockActual(producto.getStockActual() - request.getCantidad());
         productoRepository.save(producto);
 
-        registrarMovimiento(producto, "VENTA", -request.getCantidad(),
+        registrarMovimiento(producto, TIPO_VENTA, -request.getCantidad(),
                 stockAnterior, producto.getStockActual(),
                 request.getPedidoId(), null, "USUARIO", "Descuento de stock por venta");
     }
@@ -104,7 +115,7 @@ public class InventarioService {
     @Transactional
     public void realizarAjuste(AjusteInventarioRequest request) {
         Producto producto = productoRepository.findById(request.getProductoId())
-                .orElseThrow(() -> new ProductoNoEncontradoException("Producto no encontrado con ID: " + request.getProductoId()));
+                .orElseThrow(() -> new ProductoNoEncontradoException(PRODUCTO_NO_ENCONTRADO_ID + request.getProductoId()));
 
         Integer stockAnterior = producto.getStockActual();
         Integer stockNuevo = stockAnterior + request.getCantidad();
@@ -136,7 +147,7 @@ public class InventarioService {
     @Transactional
     public ReservaStock reservarStock(ReservaStockRequest request) {
         Producto producto = productoRepository.findById(request.getProductoId())
-                .orElseThrow(() -> new ProductoNoEncontradoException("Producto no encontrado con ID: " + request.getProductoId()));
+                .orElseThrow(() -> new ProductoNoEncontradoException(PRODUCTO_NO_ENCONTRADO_ID + request.getProductoId()));
 
         Integer stockDisponible = producto.getStockActual() - producto.getStockReservado();
         if (stockDisponible < request.getCantidad()) {
@@ -155,16 +166,16 @@ public class InventarioService {
                 .producto(producto)
                 .pedidoId(request.getPedidoId())
                 .cantidad(request.getCantidad())
-                .estado("ACTIVA")
+                .estado(ESTADO_ACTIVA)
                 .fechaCreacion(LocalDateTime.now())
                 .fechaExpiracion(fechaExpiracion)
                 .build();
 
         ReservaStock savedReserva = reservaRepository.save(reserva);
 
-        registrarMovimiento(producto, "RESERVA", request.getCantidad(),
+        registrarMovimiento(producto, TIPO_RESERVA, request.getCantidad(),
                 producto.getStockActual(), producto.getStockActual(),
-                request.getPedidoId(), null, "SISTEMA", "Reserva de stock");
+                request.getPedidoId(), null, ACTOR_SISTEMA, "Reserva de stock");
 
         return savedReserva;
     }
@@ -174,7 +185,7 @@ public class InventarioService {
         ReservaStock reserva = reservaRepository.findById(reservaId)
                 .orElseThrow(() -> new ProductoNoEncontradoException("Reserva no encontrada con ID: " + reservaId));
 
-        if (!"ACTIVA".equals(reserva.getEstado())) {
+        if (!ESTADO_ACTIVA.equals(reserva.getEstado())) {
             throw new IllegalStateException("La reserva no está en estado ACTIVA");
         }
 
@@ -188,7 +199,7 @@ public class InventarioService {
 
         registrarMovimiento(producto, "LIBERACION_RESERVA", reserva.getCantidad(),
                 producto.getStockActual(), producto.getStockActual(),
-                reserva.getPedidoId(), null, "SISTEMA", "Liberación de reserva");
+                reserva.getPedidoId(), null, ACTOR_SISTEMA, "Liberación de reserva");
     }
 
     @Transactional
@@ -196,7 +207,7 @@ public class InventarioService {
         ReservaStock reserva = reservaRepository.findById(reservaId)
                 .orElseThrow(() -> new ProductoNoEncontradoException("Reserva no encontrada con ID: " + reservaId));
 
-        if (!"ACTIVA".equals(reserva.getEstado())) {
+        if (!ESTADO_ACTIVA.equals(reserva.getEstado())) {
             throw new IllegalStateException("La reserva no está en estado ACTIVA");
         }
 
@@ -210,9 +221,9 @@ public class InventarioService {
         reserva.setFechaResolucion(LocalDateTime.now());
         reservaRepository.save(reserva);
 
-        registrarMovimiento(producto, "VENTA", -reserva.getCantidad(),
+        registrarMovimiento(producto, TIPO_VENTA, -reserva.getCantidad(),
                 stockAnterior, producto.getStockActual(),
-                reserva.getPedidoId(), null, "SISTEMA", "Confirmación de reserva");
+                reserva.getPedidoId(), null, ACTOR_SISTEMA, "Confirmación de reserva");
     }
 
     @Transactional
@@ -221,11 +232,10 @@ public class InventarioService {
 
         for (ReservaStock reserva : reservasExpiradas) {
             try {
-                liberarReserva(reserva.getId());
+                applicationContext.getBean(InventarioService.class).liberarReserva(reserva.getId()); // via proxy para respetar @Transactional
                 reserva.setEstado("EXPIRADA");
                 reservaRepository.save(reserva);
             } catch (Exception e) {
-                // Log error but continue with other reservations
                 log.error("Error al liberar reserva expirada ID: {}, Error: {}", reserva.getId(), e.getMessage());
             }
         }
@@ -263,7 +273,7 @@ public class InventarioService {
                 .build();
         if (request.getCategoriaId() != null) {
             categoriaRepository.findById(request.getCategoriaId())
-                .ifPresent(producto::setCategoria);
+                    .ifPresent(producto::setCategoria);
         }
         return mapToProductoResponse(productoRepository.save(producto));
     }
@@ -271,15 +281,27 @@ public class InventarioService {
     public ProductoResponse actualizarProducto(Long id, ActualizarProductoRequest request) {
         Producto producto = productoRepository.findById(id)
                 .orElseThrow(() -> new ProductoNoEncontradoException("Producto no encontrado: " + id));
-        if (request.getNombre() != null) producto.setNombre(request.getNombre());
-        if (request.getDescripcion() != null) producto.setDescripcion(request.getDescripcion());
-        if (request.getPrecioUnitario() != null) producto.setPrecioUnitario(request.getPrecioUnitario());
-        if (request.getStockMinimo() != null) producto.setStockMinimo(request.getStockMinimo());
-        if (request.getActivo() != null) producto.setActivo(request.getActivo());
-        if (request.getStockAgregar() != null && request.getStockAgregar() > 0) producto.setStockActual(producto.getStockActual() + request.getStockAgregar());
+        if (request.getNombre() != null) {
+            producto.setNombre(request.getNombre());
+        }
+        if (request.getDescripcion() != null) {
+            producto.setDescripcion(request.getDescripcion());
+        }
+        if (request.getPrecioUnitario() != null) {
+            producto.setPrecioUnitario(request.getPrecioUnitario());
+        }
+        if (request.getStockMinimo() != null) {
+            producto.setStockMinimo(request.getStockMinimo());
+        }
+        if (request.getActivo() != null) {
+            producto.setActivo(request.getActivo());
+        }
+        if (request.getStockAgregar() != null && request.getStockAgregar() > 0) {
+            producto.setStockActual(producto.getStockActual() + request.getStockAgregar());
+        }
         if (request.getCategoriaId() != null) {
             categoriaRepository.findById(request.getCategoriaId())
-                .ifPresent(producto::setCategoria);
+                    .ifPresent(producto::setCategoria);
         }
         return mapToProductoResponse(productoRepository.save(producto));
     }
