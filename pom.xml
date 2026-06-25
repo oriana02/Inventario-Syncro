@@ -136,11 +136,26 @@
                     </execution>
                 </executions>
             </plugin>
-		
+
             <plugin>
                 <groupId>org.jacoco</groupId>
                 <artifactId>jacoco-maven-plugin</artifactId>
                 <version>0.8.11</version>
+                <configuration>
+                    <excludes>
+                        <!-- DTOs: solo getters/setters generados por Lombok -->
+                        <exclude>**/dto/**</exclude>
+                        <!-- Eventos: POJOs de mensajería -->
+                        <exclude>**/event/**</exclude>
+                        <!-- Modelos/entidades JPA -->
+                        <exclude>**/model/**</exclude>
+                        <!-- Excepciones simples -->
+                        <exclude>**/exception/ProductoNoEncontradoException.class</exclude>
+                        <exclude>**/exception/StockInsuficienteException.class</exclude>
+                        <!-- Clase main de Spring Boot -->
+                        <exclude>**/InventarioApplication.class</exclude>
+                    </excludes>
+                </configuration>
                 <executions>
                     <execution>
                         <id>prepare-agent</id>

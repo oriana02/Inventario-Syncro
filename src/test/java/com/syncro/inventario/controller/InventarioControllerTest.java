@@ -61,20 +61,12 @@ class InventarioControllerTest {
                 .build();
     }
 
-    // =========================================================================
-    // GET /inventario
-    // =========================================================================
-
     @Test
     @DisplayName("GET /inventario - health check retorna 200")
     void healthCheck_retorna200() throws Exception {
         mockMvc.perform(get("/inventario"))
                 .andExpect(status().isOk());
     }
-
-    // =========================================================================
-    // GET /inventario/productos
-    // =========================================================================
 
     @Test
     @DisplayName("GET /inventario/productos - retorna lista de productos")
@@ -116,10 +108,6 @@ class InventarioControllerTest {
                 .andExpect(jsonPath("$[0].sku").value("ELEC-001"));
     }
 
-    // =========================================================================
-    // GET /inventario/productos/{id}
-    // =========================================================================
-
     @Test
     @DisplayName("GET /inventario/productos/{id} - retorna producto existente")
     void consultarProductoPorId_existente_retorna200() throws Exception {
@@ -141,10 +129,6 @@ class InventarioControllerTest {
         mockMvc.perform(get("/inventario/productos/99"))
                 .andExpect(status().isNotFound());
     }
-
-    // =========================================================================
-    // PATCH /inventario/descontar
-    // =========================================================================
 
     @Test
     @DisplayName("PATCH /inventario/descontar - descuenta stock correctamente")
@@ -184,10 +168,6 @@ class InventarioControllerTest {
                 .andExpect(status().isBadRequest());
     }
 
-    // =========================================================================
-    // POST /inventario/ajuste
-    // =========================================================================
-
     @Test
     @DisplayName("POST /inventario/ajuste - ajuste valido retorna 201")
     void realizarAjuste_valido_retorna201() throws Exception {
@@ -212,10 +192,6 @@ class InventarioControllerTest {
                 .andExpect(status().isBadRequest());
     }
 
-    // =========================================================================
-    // POST /inventario/reserva
-    // =========================================================================
-
     @Test
     @DisplayName("POST /inventario/reserva - reserva valida retorna 201")
     void reservarStock_valido_retorna201() throws Exception {
@@ -234,10 +210,6 @@ class InventarioControllerTest {
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.estado").value("ACTIVA"));
     }
-
-    // =========================================================================
-    // POST /inventario/reserva/{id}/liberar
-    // =========================================================================
 
     @Test
     @DisplayName("POST /inventario/reserva/{id}/liberar - libera reserva existente")
@@ -258,10 +230,6 @@ class InventarioControllerTest {
                 .andExpect(status().isNotFound());
     }
 
-    // =========================================================================
-    // POST /inventario/reserva/{id}/confirmar
-    // =========================================================================
-
     @Test
     @DisplayName("POST /inventario/reserva/{id}/confirmar - confirma reserva existente")
     void confirmarReserva_existente_retorna200() throws Exception {
@@ -270,10 +238,6 @@ class InventarioControllerTest {
         mockMvc.perform(post("/inventario/reserva/1/confirmar"))
                 .andExpect(status().isOk());
     }
-
-    // =========================================================================
-    // POST /inventario/productos
-    // =========================================================================
 
     @Test
     @DisplayName("POST /inventario/productos - crea producto valido retorna 201")
@@ -300,10 +264,6 @@ class InventarioControllerTest {
                 .andExpect(status().isBadRequest());
     }
 
-    // =========================================================================
-    // PATCH /inventario/productos/{id}
-    // =========================================================================
-
     @Test
     @DisplayName("PATCH /inventario/productos/{id} - actualiza producto existente")
     void actualizarProducto_existente_retorna200() throws Exception {
@@ -318,10 +278,6 @@ class InventarioControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(1));
     }
-
-    // =========================================================================
-    // DELETE /inventario/productos/{id}
-    // =========================================================================
 
     @Test
     @DisplayName("DELETE /inventario/productos/{id} - elimina producto existente")

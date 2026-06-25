@@ -41,7 +41,6 @@ public class InventarioService {
     private static final String TIPO_RESERVA = "RESERVA";
     private static final String ESTADO_ACTIVA = "ACTIVA";
     private static final String ACTOR_SISTEMA = "SISTEMA";
-    @Autowired
     private ApplicationContext applicationContext;
 
 

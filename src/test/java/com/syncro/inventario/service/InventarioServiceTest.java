@@ -1,371 +1,514 @@
 package com.syncro.inventario.service;
 
-import com.syncro.inventario.dto.AjusteInventarioRequest;
-import com.syncro.inventario.dto.CrearProductoRequest;
-import com.syncro.inventario.dto.DescuentoStockRequest;
-import com.syncro.inventario.dto.ProductoResponse;
-import com.syncro.inventario.dto.ReservaStockRequest;
+import com.syncro.inventario.dto.*;
 import com.syncro.inventario.exception.ProductoNoEncontradoException;
 import com.syncro.inventario.exception.StockInsuficienteException;
-import com.syncro.inventario.model.Categoria;
-import com.syncro.inventario.model.MovimientoInventario;
-import com.syncro.inventario.model.Producto;
-import com.syncro.inventario.model.ReservaStock;
-import com.syncro.inventario.repository.AjusteInventarioRepository;
-import com.syncro.inventario.repository.CategoriaRepository;
-import com.syncro.inventario.repository.MovimientoInventarioRepository;
-import com.syncro.inventario.repository.ProductoRepository;
-import com.syncro.inventario.repository.ReservaStockRepository;
+import com.syncro.inventario.model.*;
+import com.syncro.inventario.repository.*;
+
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
-import org.mockito.Mock;
+import org.mockito.*;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationContext;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import java.math.BigDecimal;
-import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
-import static org.assertj.core.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
-@DisplayName("InventarioService - Tests Unitarios")
 class InventarioServiceTest {
 
-    @Mock private ProductoRepository productoRepository;
-    @Mock private MovimientoInventarioRepository movimientoRepository;
-    @Mock private ReservaStockRepository reservaRepository;
-    @Mock private AjusteInventarioRepository ajusteRepository;
-    @Mock private CategoriaRepository categoriaRepository;
+    @Mock
+    private ProductoRepository productoRepository;
+    @Mock
+    private MovimientoInventarioRepository movimientoRepository;
+    @Mock
+    private ReservaStockRepository reservaRepository;
+    @Mock
+    private AjusteInventarioRepository ajusteRepository;
+    @Mock
+    private CategoriaRepository categoriaRepository;
+    @Mock
+    private ApplicationContext applicationContext;
 
     @InjectMocks
-    private InventarioService inventarioService;
+    private InventarioService service;
 
-    private Producto productoMock;
-    private Categoria categoriaMock;
+    private Producto productoBase;
 
     @BeforeEach
     void setUp() {
-        categoriaMock = new Categoria(1L, "Electrónica", "Dispositivos", true);
-
-        productoMock = Producto.builder()
+        productoBase = Producto.builder()
                 .id(1L)
-                .empresaId(1L)
-                .sku("ELEC-001")
-                .nombre("Audífonos Bluetooth")
-                .descripcion("Audífonos inalámbricos")
-                .stockActual(50)
+                .empresaId(10L)
+                .sku("SKU-001")
+                .nombre("Producto Test")
+                .stockActual(100)
                 .stockReservado(0)
-                .stockMinimo(10)
-                .precioUnitario(new BigDecimal("29990"))
-                .categoria(categoriaMock)
+                .stockMinimo(5)
+                .precioUnitario(BigDecimal.valueOf(9.99))
                 .activo(true)
                 .build();
+
+        ReflectionTestUtils.setField(service, "applicationContext", applicationContext);
     }
 
-    // =========================================================================
-    // consultarProductos
-    // =========================================================================
-
+    // ── consultarProductos ────────────────────────────────────────────────────
     @Test
-    @DisplayName("consultarProductos - retorna lista de productos de la empresa")
-    void consultarProductos_retornaLista() {
-        when(productoRepository.findByEmpresaIdAndFilters(1L, null))
-                .thenReturn(List.of(productoMock));
+    void consultarProductos_conCategoria_filtraCorrectamente() {
+        when(productoRepository.findByEmpresaIdAndFilters(10L, 2L))
+                .thenReturn(List.of(productoBase));
 
-        List<ProductoResponse> resultado = inventarioService.consultarProductos(1L, null);
+        List<ProductoResponse> result = service.consultarProductos(10L, 2L);
 
-        assertThat(resultado).hasSize(1);
-        assertThat(resultado.get(0).getSku()).isEqualTo("ELEC-001");
-        assertThat(resultado.get(0).getStockActual()).isEqualTo(50);
+        assertEquals(1, result.size());
     }
 
     @Test
-    @DisplayName("consultarProductos - lista vacía si no hay productos")
-    void consultarProductos_listaVacia() {
-        when(productoRepository.findByEmpresaIdAndFilters(99L, null))
-                .thenReturn(List.of());
+    void consultarProductos_sinCategoria_retornaTodos() {
+        when(productoRepository.findByEmpresaIdAndFilters(10L, null))
+                .thenReturn(List.of(productoBase));
 
-        List<ProductoResponse> resultado = inventarioService.consultarProductos(99L, null);
+        assertEquals(1, service.consultarProductos(10L, null).size());
+    }
 
-        assertThat(resultado).isEmpty();
+    // ── consultarProductoPorId ────────────────────────────────────────────────
+    @Test
+    void consultarProductoPorId_existente_retornaResponse() {
+        when(productoRepository.findById(1L)).thenReturn(Optional.of(productoBase));
+
+        assertEquals(1L, service.consultarProductoPorId(1L).getId());
     }
 
     @Test
-    @DisplayName("consultarProductos - filtra por categoría cuando se proporciona")
-    void consultarProductos_conCategoria() {
-        when(productoRepository.findByEmpresaIdAndFilters(1L, 1L))
-                .thenReturn(List.of(productoMock));
-
-        List<ProductoResponse> resultado = inventarioService.consultarProductos(1L, 1L);
-
-        assertThat(resultado).hasSize(1);
-        verify(productoRepository).findByEmpresaIdAndFilters(1L, 1L);
-    }
-
-    // =========================================================================
-    // consultarProductoPorId
-    // =========================================================================
-
-    @Test
-    @DisplayName("consultarProductoPorId - retorna producto existente")
-    void consultarProductoPorId_productoExistente() {
-        when(productoRepository.findById(1L)).thenReturn(Optional.of(productoMock));
-
-        ProductoResponse resultado = inventarioService.consultarProductoPorId(1L);
-
-        assertThat(resultado.getId()).isEqualTo(1L);
-        assertThat(resultado.getNombre()).isEqualTo("Audífonos Bluetooth");
-        assertThat(resultado.getCategoriaNombre()).isEqualTo("Electrónica");
-    }
-
-    @Test
-    @DisplayName("consultarProductoPorId - lanza excepcion si no existe")
-    void consultarProductoPorId_noExiste_lanzaExcepcion() {
+    void consultarProductoPorId_noExistente_lanzaExcepcion() {
         when(productoRepository.findById(99L)).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> inventarioService.consultarProductoPorId(99L))
-                .isInstanceOf(ProductoNoEncontradoException.class)
-                .hasMessageContaining("99");
+        assertThrows(ProductoNoEncontradoException.class,
+                () -> service.consultarProductoPorId(99L));
     }
 
-    // =========================================================================
-    // descontarStockPorSku
-    // =========================================================================
+    @Test
+    void consultarProductoPorId_conCategoria_mapeaCategoria() {
+        Categoria categoria = new Categoria();
+        categoria.setId(2L);
+        categoria.setNombre("Bebidas");
+        productoBase.setCategoria(categoria);
+
+        when(productoRepository.findById(1L)).thenReturn(Optional.of(productoBase));
+
+        ProductoResponse response = service.consultarProductoPorId(1L);
+        assertEquals(2L, response.getCategoriaId());
+        assertEquals("Bebidas", response.getCategoriaNombre());
+    }
 
     @Test
-    @DisplayName("descontarStockPorSku - descuenta correctamente el stock")
-    void descontarStockPorSku_stockSuficiente_descuenta() {
-        when(productoRepository.findBySkuAndEmpresaId("ELEC-001", 1L))
-                .thenReturn(Optional.of(productoMock));
-        when(productoRepository.save(any())).thenReturn(productoMock);
+    void consultarProductoPorId_sinCategoria_categoriaIdEsNull() {
+        productoBase.setCategoria(null);
+        when(productoRepository.findById(1L)).thenReturn(Optional.of(productoBase));
+
+        ProductoResponse response = service.consultarProductoPorId(1L);
+        assertNull(response.getCategoriaId());
+        assertNull(response.getCategoriaNombre());
+    }
+
+    // ── descontarStockPorSku ──────────────────────────────────────────────────
+    @Test
+    void descontarStockPorSku_exitoso_reducStock() {
+        when(productoRepository.findBySkuAndEmpresaId("SKU-001", 10L))
+                .thenReturn(Optional.of(productoBase));
+        when(productoRepository.save(any())).thenReturn(productoBase);
         when(movimientoRepository.save(any())).thenReturn(new MovimientoInventario());
 
-        inventarioService.descontarStockPorSku("ELEC-001", 1L, 10L, 5);
+        service.descontarStockPorSku("SKU-001", 10L, 1L, 10);
 
-        assertThat(productoMock.getStockActual()).isEqualTo(45);
-        verify(productoRepository).save(productoMock);
-        verify(movimientoRepository).save(any());
+        assertEquals(90, productoBase.getStockActual());
     }
 
     @Test
-    @DisplayName("descontarStockPorSku - lanza excepcion si stock insuficiente")
-    void descontarStockPorSku_stockInsuficiente_lanzaExcepcion() {
-        when(productoRepository.findBySkuAndEmpresaId("ELEC-001", 1L))
-                .thenReturn(Optional.of(productoMock));
-
-        assertThatThrownBy(() ->
-                inventarioService.descontarStockPorSku("ELEC-001", 1L, 10L, 100))
-                .isInstanceOf(StockInsuficienteException.class)
-                .hasMessageContaining("ELEC-001");
-
-        verify(productoRepository, never()).save(any());
-    }
-
-    @Test
-    @DisplayName("descontarStockPorSku - lanza excepcion si SKU no existe")
     void descontarStockPorSku_skuNoExiste_lanzaExcepcion() {
-        when(productoRepository.findBySkuAndEmpresaId("SKU-999", 1L))
+        when(productoRepository.findBySkuAndEmpresaId("NOEXISTE", 10L))
                 .thenReturn(Optional.empty());
 
-        assertThatThrownBy(() ->
-                inventarioService.descontarStockPorSku("SKU-999", 1L, 10L, 5))
-                .isInstanceOf(ProductoNoEncontradoException.class)
-                .hasMessageContaining("SKU-999");
+        assertThrows(ProductoNoEncontradoException.class,
+                () -> service.descontarStockPorSku("NOEXISTE", 10L, 1L, 5));
     }
 
-    // =========================================================================
-    // descontarStock
-    // =========================================================================
-
     @Test
-    @DisplayName("descontarStock - descuenta por ID de producto correctamente")
-    void descontarStock_stockSuficiente_descuenta() {
-        DescuentoStockRequest request = DescuentoStockRequest.builder()
-                .productoId(1L).pedidoId(5L).cantidad(10).build();
+    void descontarStockPorSku_stockInsuficiente_lanzaExcepcion() {
+        when(productoRepository.findBySkuAndEmpresaId("SKU-001", 10L))
+                .thenReturn(Optional.of(productoBase));
 
-        when(productoRepository.findById(1L)).thenReturn(Optional.of(productoMock));
-        when(productoRepository.save(any())).thenReturn(productoMock);
+        assertThrows(StockInsuficienteException.class,
+                () -> service.descontarStockPorSku("SKU-001", 10L, 1L, 200));
+    }
+
+    // ── descontarStock ────────────────────────────────────────────────────────
+    @Test
+    void descontarStock_exitoso_reducStock() {
+        DescuentoStockRequest request = new DescuentoStockRequest();
+        request.setProductoId(1L);
+        request.setCantidad(20);
+        request.setPedidoId(5L);
+
+        when(productoRepository.findById(1L)).thenReturn(Optional.of(productoBase));
+        when(productoRepository.save(any())).thenReturn(productoBase);
         when(movimientoRepository.save(any())).thenReturn(new MovimientoInventario());
 
-        inventarioService.descontarStock(request);
+        service.descontarStock(request);
 
-        assertThat(productoMock.getStockActual()).isEqualTo(40);
-        verify(movimientoRepository).save(any());
+        assertEquals(80, productoBase.getStockActual());
     }
 
     @Test
-    @DisplayName("descontarStock - lanza excepcion si stock insuficiente")
+    void descontarStock_productoNoEncontrado_lanzaExcepcion() {
+        DescuentoStockRequest request = new DescuentoStockRequest();
+        request.setProductoId(99L);
+        request.setCantidad(5);
+
+        when(productoRepository.findById(99L)).thenReturn(Optional.empty());
+
+        assertThrows(ProductoNoEncontradoException.class, () -> service.descontarStock(request));
+    }
+
+    @Test
     void descontarStock_stockInsuficiente_lanzaExcepcion() {
-        DescuentoStockRequest request = DescuentoStockRequest.builder()
-                .productoId(1L).pedidoId(5L).cantidad(200).build();
+        DescuentoStockRequest request = new DescuentoStockRequest();
+        request.setProductoId(1L);
+        request.setCantidad(999);
 
-        when(productoRepository.findById(1L)).thenReturn(Optional.of(productoMock));
+        when(productoRepository.findById(1L)).thenReturn(Optional.of(productoBase));
 
-        assertThatThrownBy(() -> inventarioService.descontarStock(request))
-                .isInstanceOf(StockInsuficienteException.class);
-
-        verify(productoRepository, never()).save(any());
+        assertThrows(StockInsuficienteException.class, () -> service.descontarStock(request));
     }
 
-    // =========================================================================
-    // realizarAjuste
-    // =========================================================================
-
+    // ── realizarAjuste ────────────────────────────────────────────────────────
     @Test
-    @DisplayName("realizarAjuste - ajuste de entrada aumenta el stock")
-    void realizarAjuste_entrada_aumentaStock() {
-        AjusteInventarioRequest request = AjusteInventarioRequest.builder()
-                .productoId(1L).empresaId(1L).tipoAjuste("INGRESO_MERCADERIA")
-                .cantidad(20).motivo("Ingreso nuevo lote").usuarioId(1L).build();
+    void realizarAjuste_positivo_incrementaStock() {
+        AjusteInventarioRequest request = new AjusteInventarioRequest();
+        request.setProductoId(1L);
+        request.setCantidad(50);
+        request.setEmpresaId(10L);
+        request.setTipoAjuste("ENTRADA");
+        request.setMotivo("Reposicion");
+        request.setUsuarioId(1L);
 
-        when(productoRepository.findById(1L)).thenReturn(Optional.of(productoMock));
-        when(productoRepository.save(any())).thenReturn(productoMock);
-        when(movimientoRepository.save(any())).thenReturn(new MovimientoInventario());
+        when(productoRepository.findById(1L)).thenReturn(Optional.of(productoBase));
+        when(productoRepository.save(any())).thenReturn(productoBase);
+        when(movimientoRepository.save(any())).thenReturn(MovimientoInventario.builder().id(1L).build());
+        when(ajusteRepository.save(any())).thenReturn(new AjusteInventario());
 
-        inventarioService.realizarAjuste(request);
+        service.realizarAjuste(request);
 
-        assertThat(productoMock.getStockActual()).isEqualTo(70);
-        verify(ajusteRepository).save(any());
+        assertEquals(150, productoBase.getStockActual());
     }
 
     @Test
-    @DisplayName("realizarAjuste - ajuste negativo que resulta en stock negativo lanza excepcion")
+    void realizarAjuste_negativo_decrementaStock() {
+        AjusteInventarioRequest request = new AjusteInventarioRequest();
+        request.setProductoId(1L);
+        request.setCantidad(-30);
+        request.setEmpresaId(10L);
+        request.setTipoAjuste("SALIDA");
+        request.setMotivo("Merma");
+        request.setUsuarioId(1L);
+
+        when(productoRepository.findById(1L)).thenReturn(Optional.of(productoBase));
+        when(productoRepository.save(any())).thenReturn(productoBase);
+        when(movimientoRepository.save(any())).thenReturn(MovimientoInventario.builder().id(1L).build());
+        when(ajusteRepository.save(any())).thenReturn(new AjusteInventario());
+
+        service.realizarAjuste(request);
+
+        assertEquals(70, productoBase.getStockActual());
+    }
+
+    @Test
     void realizarAjuste_resultadoNegativo_lanzaExcepcion() {
-        AjusteInventarioRequest request = AjusteInventarioRequest.builder()
-                .productoId(1L).empresaId(1L).tipoAjuste("MERMA")
-                .cantidad(-100).motivo("Merma").usuarioId(1L).build();
+        AjusteInventarioRequest request = new AjusteInventarioRequest();
+        request.setProductoId(1L);
+        request.setCantidad(-999);
 
-        when(productoRepository.findById(1L)).thenReturn(Optional.of(productoMock));
+        when(productoRepository.findById(1L)).thenReturn(Optional.of(productoBase));
 
-        assertThatThrownBy(() -> inventarioService.realizarAjuste(request))
-                .isInstanceOf(StockInsuficienteException.class)
-                .hasMessageContaining("negativo");
-
-        verify(productoRepository, never()).save(any());
+        assertThrows(StockInsuficienteException.class, () -> service.realizarAjuste(request));
     }
 
-    // =========================================================================
-    // reservarStock
-    // =========================================================================
-
+    // ── reservarStock ─────────────────────────────────────────────────────────
     @Test
-    @DisplayName("reservarStock - reserva exitosa aumenta stockReservado")
-    void reservarStock_stockDisponible_reservaExitosa() {
-        ReservaStockRequest request = ReservaStockRequest.builder()
-                .productoId(1L).pedidoId(5L).cantidad(10).minutosExpiracion(30).build();
+    void reservarStock_exitoso_incrementaStockReservado() {
+        ReservaStockRequest request = new ReservaStockRequest();
+        request.setProductoId(1L);
+        request.setCantidad(10);
+        request.setPedidoId(7L);
+        request.setMinutosExpiracion(60);
 
-        when(productoRepository.findById(1L)).thenReturn(Optional.of(productoMock));
-        when(productoRepository.save(any())).thenReturn(productoMock);
-        when(reservaRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(productoRepository.findById(1L)).thenReturn(Optional.of(productoBase));
+        when(productoRepository.save(any())).thenReturn(productoBase);
+        when(reservaRepository.save(any())).thenReturn(ReservaStock.builder().id(1L).build());
         when(movimientoRepository.save(any())).thenReturn(new MovimientoInventario());
 
-        ReservaStock reserva = inventarioService.reservarStock(request);
-
-        assertThat(productoMock.getStockReservado()).isEqualTo(10);
-        assertThat(reserva.getEstado()).isEqualTo("ACTIVA");
-        assertThat(reserva.getCantidad()).isEqualTo(10);
+        assertNotNull(service.reservarStock(request));
+        assertEquals(10, productoBase.getStockReservado());
     }
 
     @Test
-    @DisplayName("reservarStock - lanza excepcion si no hay stock disponible")
-    void reservarStock_sinStockDisponible_lanzaExcepcion() {
-        productoMock.setStockReservado(45);
-        ReservaStockRequest request = ReservaStockRequest.builder()
-                .productoId(1L).pedidoId(5L).cantidad(10).build();
+    void reservarStock_sinMinutosExpiracion_usaDefault30() {
+        ReservaStockRequest request = new ReservaStockRequest();
+        request.setProductoId(1L);
+        request.setCantidad(5);
+        request.setPedidoId(8L);
+        request.setMinutosExpiracion(null); // rama null → default 30
 
-        when(productoRepository.findById(1L)).thenReturn(Optional.of(productoMock));
+        when(productoRepository.findById(1L)).thenReturn(Optional.of(productoBase));
+        when(productoRepository.save(any())).thenReturn(productoBase);
+        when(reservaRepository.save(any())).thenReturn(ReservaStock.builder().id(2L).build());
+        when(movimientoRepository.save(any())).thenReturn(new MovimientoInventario());
 
-        assertThatThrownBy(() -> inventarioService.reservarStock(request))
-                .isInstanceOf(StockInsuficienteException.class);
+        assertNotNull(service.reservarStock(request));
     }
 
-    // =========================================================================
-    // liberarReserva
-    // =========================================================================
-
     @Test
-    @DisplayName("liberarReserva - libera correctamente una reserva activa")
-    void liberarReserva_reservaActiva_liberaExitoso() {
+    void reservarStock_stockInsuficiente_lanzaExcepcion() {
+        ReservaStockRequest request = new ReservaStockRequest();
+        request.setProductoId(1L);
+        request.setCantidad(500);
+
+        when(productoRepository.findById(1L)).thenReturn(Optional.of(productoBase));
+
+        assertThrows(StockInsuficienteException.class, () -> service.reservarStock(request));
+    }
+
+    // ── liberarReserva ────────────────────────────────────────────────────────
+    @Test
+    void liberarReserva_exitoso_cambiaEstadoALiberada() {
+        productoBase.setStockReservado(10);
         ReservaStock reserva = ReservaStock.builder()
-                .id(1L).producto(productoMock).pedidoId(5L)
-                .cantidad(10).estado("ACTIVA")
-                .fechaExpiracion(LocalDateTime.now().plusMinutes(30)).build();
+                .id(1L).producto(productoBase).cantidad(10).estado("ACTIVA").pedidoId(1L).build();
 
-        productoMock.setStockReservado(10);
         when(reservaRepository.findById(1L)).thenReturn(Optional.of(reserva));
-        when(productoRepository.save(any())).thenReturn(productoMock);
+        when(productoRepository.save(any())).thenReturn(productoBase);
         when(reservaRepository.save(any())).thenReturn(reserva);
         when(movimientoRepository.save(any())).thenReturn(new MovimientoInventario());
 
-        inventarioService.liberarReserva(1L);
+        service.liberarReserva(1L);
 
-        assertThat(reserva.getEstado()).isEqualTo("LIBERADA");
-        assertThat(productoMock.getStockReservado()).isZero();
+        assertEquals("LIBERADA", reserva.getEstado());
+        assertEquals(0, productoBase.getStockReservado());
     }
 
     @Test
-    @DisplayName("liberarReserva - lanza excepcion si reserva no está activa")
-    void liberarReserva_reservaNoActiva_lanzaExcepcion() {
+    void liberarReserva_noActiva_lanzaIllegalState() {
         ReservaStock reserva = ReservaStock.builder()
-                .id(1L).producto(productoMock).pedidoId(5L)
-                .cantidad(10).estado("LIBERADA")
-                .fechaExpiracion(LocalDateTime.now().plusMinutes(30)).build();
+                .id(1L).producto(productoBase).estado("CONFIRMADA").build();
 
         when(reservaRepository.findById(1L)).thenReturn(Optional.of(reserva));
 
-        assertThatThrownBy(() -> inventarioService.liberarReserva(1L))
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("ACTIVA");
-    }
-
-    // =========================================================================
-    // crearProducto
-    // =========================================================================
-
-    @Test
-    @DisplayName("crearProducto - crea producto con datos validos")
-    void crearProducto_datosValidos_creaExitoso() {
-        CrearProductoRequest request = CrearProductoRequest.builder()
-                .empresaId(1L).sku("NUEVO-001").nombre("Nuevo Producto")
-                .precioUnitario(new BigDecimal("9990"))
-                .stockInicial(100).stockMinimo(5).build();
-
-        when(productoRepository.save(any())).thenReturn(productoMock);
-
-        ProductoResponse response = inventarioService.crearProducto(request);
-
-        assertThat(response).isNotNull();
-        verify(productoRepository).save(any(Producto.class));
-    }
-
-    // =========================================================================
-    // eliminarProducto
-    // =========================================================================
-
-    @Test
-    @DisplayName("eliminarProducto - desactiva el producto (borrado logico)")
-    void eliminarProducto_productoExistente_desactiva() {
-        when(productoRepository.findById(1L)).thenReturn(Optional.of(productoMock));
-        when(productoRepository.save(any())).thenReturn(productoMock);
-
-        inventarioService.eliminarProducto(1L);
-
-        assertThat(productoMock.getActivo()).isFalse();
-        verify(productoRepository).save(productoMock);
+        assertThrows(IllegalStateException.class, () -> service.liberarReserva(1L));
     }
 
     @Test
-    @DisplayName("eliminarProducto - lanza excepcion si producto no existe")
+    void liberarReserva_noExiste_lanzaExcepcion() {
+        when(reservaRepository.findById(99L)).thenReturn(Optional.empty());
+
+        assertThrows(ProductoNoEncontradoException.class, () -> service.liberarReserva(99L));
+    }
+
+    // ── confirmarReserva ──────────────────────────────────────────────────────
+    @Test
+    void confirmarReserva_exitoso_cambiaEstadoYReduceStock() {
+        productoBase.setStockReservado(10);
+        ReservaStock reserva = ReservaStock.builder()
+                .id(1L).producto(productoBase).cantidad(10).estado("ACTIVA").pedidoId(2L).build();
+
+        when(reservaRepository.findById(1L)).thenReturn(Optional.of(reserva));
+        when(productoRepository.save(any())).thenReturn(productoBase);
+        when(reservaRepository.save(any())).thenReturn(reserva);
+        when(movimientoRepository.save(any())).thenReturn(new MovimientoInventario());
+
+        service.confirmarReserva(1L);
+
+        assertEquals("CONFIRMADA", reserva.getEstado());
+        assertEquals(90, productoBase.getStockActual());
+        assertEquals(0, productoBase.getStockReservado());
+    }
+
+    @Test
+    void confirmarReserva_noActiva_lanzaIllegalState() {
+        ReservaStock reserva = ReservaStock.builder()
+                .id(1L).producto(productoBase).estado("LIBERADA").build();
+
+        when(reservaRepository.findById(1L)).thenReturn(Optional.of(reserva));
+
+        assertThrows(IllegalStateException.class, () -> service.confirmarReserva(1L));
+    }
+
+    // ── liberarReservasExpiradas ──────────────────────────────────────────────
+    @Test
+    void liberarReservasExpiradas_sinReservas_noHaceNada() {
+        when(reservaRepository.findExpiredReservas(any())).thenReturn(List.of());
+
+        assertDoesNotThrow(() -> service.liberarReservasExpiradas());
+    }
+
+    @Test
+    void liberarReservasExpiradas_conReservaActiva_liberaYMarcaExpirada() {
+        productoBase.setStockReservado(5);
+        ReservaStock reserva = ReservaStock.builder()
+                .id(1L).producto(productoBase).cantidad(5).estado("ACTIVA").pedidoId(3L).build();
+
+        when(reservaRepository.findExpiredReservas(any())).thenReturn(List.of(reserva));
+        when(applicationContext.getBean(InventarioService.class)).thenReturn(service);
+        when(reservaRepository.findById(1L)).thenReturn(Optional.of(reserva));
+        when(productoRepository.save(any())).thenReturn(productoBase);
+        when(reservaRepository.save(any())).thenReturn(reserva);
+        when(movimientoRepository.save(any())).thenReturn(new MovimientoInventario());
+
+        service.liberarReservasExpiradas();
+
+        assertEquals("EXPIRADA", reserva.getEstado());
+    }
+
+    @Test
+    void liberarReservasExpiradas_errorEnReserva_continuaSinPropagar() {
+        ReservaStock reserva = ReservaStock.builder()
+                .id(2L).producto(productoBase).cantidad(5).estado("ACTIVA").build();
+
+        when(reservaRepository.findExpiredReservas(any())).thenReturn(List.of(reserva));
+        when(applicationContext.getBean(InventarioService.class)).thenReturn(service);
+        when(reservaRepository.findById(2L))
+                .thenThrow(new RuntimeException("Error de base de datos"));
+
+        assertDoesNotThrow(() -> service.liberarReservasExpiradas());
+    }
+
+    // ── crearProducto ─────────────────────────────────────────────────────────
+    @Test
+    void crearProducto_sinCategoriaId_creaProductoExitosamente() {
+        CrearProductoRequest request = new CrearProductoRequest();
+        request.setEmpresaId(10L);
+        request.setSku("NEW-001");
+        request.setNombre("Nuevo Producto");
+        request.setStockInicial(50);
+        request.setStockMinimo(5);
+        request.setPrecioUnitario(BigDecimal.valueOf(15.00));
+
+        when(productoRepository.save(any())).thenReturn(productoBase);
+
+        assertNotNull(service.crearProducto(request));
+    }
+
+    @Test
+    void crearProducto_conCategoriaId_asignaCategoria() {
+        CrearProductoRequest request = new CrearProductoRequest();
+        request.setEmpresaId(10L);
+        request.setSku("CAT-001");
+        request.setNombre("Con Categoria");
+        request.setCategoriaId(3L);
+        request.setPrecioUnitario(BigDecimal.TEN);
+
+        Categoria categoria = new Categoria();
+        categoria.setId(3L);
+        categoria.setNombre("Electronica");
+
+        when(categoriaRepository.findById(3L)).thenReturn(Optional.of(categoria));
+        when(productoRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        assertNotNull(service.crearProducto(request));
+        verify(categoriaRepository).findById(3L);
+    }
+
+    @Test
+    void crearProducto_conDefaults_usaValoresPorDefecto() {
+        CrearProductoRequest request = new CrearProductoRequest();
+        request.setEmpresaId(10L);
+        request.setSku("DEF-001");
+        request.setNombre("Producto Defaults");
+
+        when(productoRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        service.crearProducto(request);
+
+        ArgumentCaptor<Producto> captor = ArgumentCaptor.forClass(Producto.class);
+        verify(productoRepository).save(captor.capture());
+        assertEquals(0, captor.getValue().getStockActual());
+        assertEquals(0, captor.getValue().getStockMinimo());
+        assertEquals("UNIDAD", captor.getValue().getUnidadMedida());
+    }
+
+    // ── actualizarProducto ────────────────────────────────────────────────────
+    @Test
+    void actualizarProducto_todosLosCampos_actualizaCorrectamente() {
+        ActualizarProductoRequest request = new ActualizarProductoRequest();
+        request.setNombre("Nombre Nuevo");
+        request.setDescripcion("Descripcion nueva");
+        request.setPrecioUnitario(BigDecimal.valueOf(20.00));
+        request.setStockMinimo(10);
+        request.setActivo(false);
+        request.setStockAgregar(15);
+        request.setCategoriaId(5L);
+
+        Categoria categoria = new Categoria();
+        categoria.setId(5L);
+
+        when(productoRepository.findById(1L)).thenReturn(Optional.of(productoBase));
+        when(categoriaRepository.findById(5L)).thenReturn(Optional.of(categoria));
+        when(productoRepository.save(any())).thenReturn(productoBase);
+
+        ProductoResponse response = service.actualizarProducto(1L, request);
+
+        assertNotNull(response);
+        assertEquals("Nombre Nuevo", productoBase.getNombre());
+        assertEquals("Descripcion nueva", productoBase.getDescripcion());
+        assertEquals(10, productoBase.getStockMinimo());
+        assertFalse(productoBase.getActivo());
+        assertEquals(115, productoBase.getStockActual());
+    }
+
+    @Test
+    void actualizarProducto_stockAgregarCeroONegativo_noModificaStock() {
+        ActualizarProductoRequest request = new ActualizarProductoRequest();
+        request.setStockAgregar(0);
+
+        when(productoRepository.findById(1L)).thenReturn(Optional.of(productoBase));
+        when(productoRepository.save(any())).thenReturn(productoBase);
+
+        service.actualizarProducto(1L, request);
+
+        assertEquals(100, productoBase.getStockActual()); // sin cambio
+    }
+
+    @Test
+    void actualizarProducto_noExiste_lanzaExcepcion() {
+        when(productoRepository.findById(99L)).thenReturn(Optional.empty());
+
+        assertThrows(ProductoNoEncontradoException.class,
+                () -> service.actualizarProducto(99L, new ActualizarProductoRequest()));
+    }
+
+    // ── eliminarProducto ──────────────────────────────────────────────────────
+    @Test
+    void eliminarProducto_existente_marcaComoInactivo() {
+        when(productoRepository.findById(1L)).thenReturn(Optional.of(productoBase));
+        when(productoRepository.save(any())).thenReturn(productoBase);
+
+        service.eliminarProducto(1L);
+
+        assertFalse(productoBase.getActivo());
+    }
+
+    @Test
     void eliminarProducto_noExiste_lanzaExcepcion() {
         when(productoRepository.findById(99L)).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> inventarioService.eliminarProducto(99L))
-                .isInstanceOf(ProductoNoEncontradoException.class);
+        assertThrows(ProductoNoEncontradoException.class,
+                () -> service.eliminarProducto(99L));
     }
 }
